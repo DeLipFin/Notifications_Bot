@@ -63,3 +63,57 @@ CREATE TABLE public.notifications (
 	is_active bool NOT NULL DEFAULT true,
 	create_time timestamp NOT NULL DEFAULT now()
 );
+
+-- Представления
+CREATE OR REPLACE VIEW public.check_list_birthdays
+AS SELECT tu.id AS tu_id,
+    tu.is_active AS tu_is_active,
+    tu.is_active_birthdays AS tu_birthdays,
+    m.id AS m_id,
+    m.is_active AS m_is_active
+   FROM telegram_users tu
+     LEFT JOIN members m ON m.telegram_user_id = tu.id
+  WHERE m.id IS NOT NULL AND m.is_active;
+
+CREATE OR REPLACE VIEW public.check_list_notifications
+AS SELECT tu.id AS tu_id,
+    tu.is_active AS tu_is_active,
+    tu.is_active_notifications AS tu_notifications,
+    n.id AS n_id,
+    n.is_active AS n_is_active
+   FROM telegram_users tu
+     LEFT JOIN notifications n ON n.telegram_user_id = tu.id
+  WHERE tu.is_active AND tu.is_active_notifications AND n.id IS NOT NULL AND n.is_active;
+
+CREATE OR REPLACE VIEW public.list_birthdays
+AS SELECT tu.id AS tu_id,
+    tu.first_name AS tu_first_name,
+    tu.last_name AS tu_last_name,
+    tu.is_active AS tu_is_active,
+    tu.is_active_birthdays AS tu_birthdays,
+    m.id AS m_id,
+    m.is_active AS m_is_active,
+    m.type AS m_type,
+    u.last_name AS u_last_name,
+    u.first_name AS u_first_name,
+    u.middle_name AS u_middle_name,
+    u.birthday AS u_birthday
+   FROM telegram_users tu
+     LEFT JOIN members m ON m.telegram_user_id = tu.id
+     LEFT JOIN users u ON u.id = m.user_id
+  ORDER BY tu.id, m.is_active, (to_char(u.birthday::timestamp with time zone, 'MM-DD'::text));
+
+CREATE OR REPLACE VIEW public.list_notifications
+AS SELECT tu.id AS tu_id,
+    tu.first_name AS tu_first_name,
+    tu.last_name AS tu_last_name,
+    tu.is_active AS tu_is_active,
+    tu.is_active_notifications AS tu_notifications,
+    n.id AS n_id,
+    n.name AS n_name,
+    n.info AS n_info,
+    n.date AS n_date,
+    n.is_active AS n_is_active
+   FROM telegram_users tu
+     LEFT JOIN notifications n ON n.telegram_user_id = tu.id
+  ORDER BY tu.id, n.is_active, n.date;

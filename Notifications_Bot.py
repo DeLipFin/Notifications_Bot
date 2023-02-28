@@ -35,26 +35,53 @@ def add_new_telegram_user(connect, telegram_id, user_first_name, user_last_name,
     error_uuid = uuid.uuid1()
     with connect.cursor() as c:
         c.execute("INSERT INTO telegram_users (telegram_id, first_name, last_name, username) VALUES(%s, %s, %s, %s) RETURNING id;",(telegram_id, user_first_name, user_last_name, user_name))
-        c.commit()
+        connect.commit()
         new_user_id = c.fetchone()
         if not new_user_id[0]:
-            print(f"{datetime.now()} | [INFO] | {user_first_name} {user_last_name} id:{user_id} - [ERROR {error_uuid}] Не удалось добавить пользователя, что-то пошло не по плану")          
-        else:  
-            print(f"{datetime.now()} | [INFO] | {user_first_name} {user_last_name} id:{user_id} - [INSERT] Пользователь успешно зарегистрировался в системе, запись в telegram_users под id:{new_user_id[0]} добавлена")
+            print(f"{datetime.now()} | [INFO] | {user_first_name} {user_last_name} id:{telegram_id} - [ERROR {error_uuid}] Не удалось добавить пользователя, что-то пошло не по плану")
+        else:
+            print(f"{datetime.now()} | [INFO] | {user_first_name} {user_last_name} id:{telegram_id} - [INSERT] Пользователь успешно зарегистрировался в системе, добавлена запись в telegram_users под id:{new_user_id[0]}")
+            true = f"Поздравляю вы зарегистрировались, Ваш персанльный id: {new_user_id[0]}\n"
+            false = f"К сожалению возникла ошибка!\nПросьба связаться с @DeLipFin и передать\n{error_uuid}"
+            message =  f"Уважаемый(ая), {user_first_name}!\n{true if new_user_id[0] else false}"
+            return message
 
-def check_status_telegram_user(connect, telegram_id):
+def check_status_telegram_user(connect, tu_id):
     with connect.cursor() as c:
-        c.execute("select * from telegram_users where telegram_id=%s;", (telegram_id,))
+        c.execute("select * from telegram_users where id=%s;", (tu_id,))
         user = c.fetchone()
         message = "Подписка неактивна, уведомления не приходят!"
         if user[6]:
-            message = (
-                f"{'🔔' if user[7] else '🔕'} Уведомления о днях рождения\n"
-                f"{'🔔' if user[8] else '🔕'} Уведомления о праздников\n"
-                f"{'🔔' if user[9] else '🔕'} Уведомления о Ваших напоминаний\n"
-            )
+            holidays = f"{'🔔 [Праздники] - Уведомления включены' if user[8] else '🔕 [Праздники] - Уведомления выключены'}\n"
+            c.execute("select * from check_list_birthdays where tu_id=%s;", (tu_id,))
+            birthday = c.fetchone()
+            if user[7] and birthday:
+                birthday='🔔 [Дни рождения] - Уведомления включены\n'
+            elif user[7] and not birthday:
+                birthday='❗️ [Дни рождения] Добавьте кого-нибудь /add_users\n' 
+            else:
+                birthday='🔕 [Дни рождения] - Уведомления выключены\n'
+            # 
+            c.execute("select * from check_list_notifications where tu_id=%s;", (tu_id,))
+            notification = c.fetchone()
+            if user[7] and notification:
+                notification='🔔 [Напоминалка] - Уведомления включены\n'
+            elif user[7] and not notification:
+                notification='❗️ [Напоминалка] Добавьте что-нибудь /add_notifications\n' 
+            else:
+                notification='🔕 [Напоминалка] - Уведомления выключены\n'
+            message = holidays + birthday + notification
         reply = message
         return reply
+
+        # message = "Подписка неактивна, уведомления не приходят!"
+        # if user[6]:
+        #     message = (
+        #         f"{'🔔' if user[7] else '🔕'} Уведомления о днях рождения\n"
+        #         f"{'🔔' if user[8] else '🔕'} Уведомления о праздников\n"
+        #         f"{'🔔' if user[9] else '🔕'} Уведомления о Ваших напоминаний\n"
+        #     )
+
 
 @bot.message_handler(commands=['start'])
 def start_message(message):
@@ -64,10 +91,11 @@ def start_message(message):
     user_name = message.from_user.username
     with get_connect() as conn:
         user = check_telegram_id(conn, telegram_id)
-        check_status = check_status_telegram_user(conn, telegram_id)
         if not user:  # Пользователь не зарегестрирован в бд
-            add_new_telegram_user(telegram_id, user_first_name, user_last_name, user_name)  # Добавляем пользователя в бд
+            new_user = add_new_telegram_user(conn, telegram_id, user_first_name, user_last_name, user_name)  # Добавляем пользователя в бд
+            bot.send_message(message.from_user.id, f"{new_user}")
         else:  # Пользователь есть в бд
+            check_status = check_status_telegram_user(conn, user[0])
             bot.send_message(message.from_user.id, f"Давно не виделись, {user[2]}!\nВаш персональный id: {user[0]}\n{check_status}")
         
 
