@@ -3,7 +3,7 @@ import telebot, psycopg2, schedule, datetime, uuid
 from datetime import datetime, timedelta
 from threading import Thread
 import threading
-from Config import *
+from config import *
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
@@ -19,7 +19,6 @@ def get_connect():
     finally:
         connect.close()
 
-# Проверка подключения к БД
 with get_connect() as connect:
     with connect.cursor() as c:
         c.execute("select version();")
@@ -51,37 +50,17 @@ def check_status_telegram_user(connect, tu_id):
         c.execute("select * from telegram_users where id=%s;", (tu_id,))
         user = c.fetchone()
         message = "Подписка неактивна, уведомления не приходят!"
-        if user[6]:
-            holidays = f"{'🔔 [Праздники] - Уведомления включены' if user[8] else '🔕 [Праздники] - Уведомления выключены'}\n"
+        if user[5]:
+            text = ['[Праздники]','[Дни рождения]','[Напоминалка]','Уведомления включены','Уведомления выключены']
+            holiday = f"🔕 {text[0]} {text[4]}" if not user[6] else f"🔔 {text[0]} {text[3]}"
             c.execute("select * from check_list_birthdays where tu_id=%s;", (tu_id,))
-            birthday = c.fetchone()
-            if user[7] and birthday:
-                birthday='🔔 [Дни рождения] - Уведомления включены\n'
-            elif user[7] and not birthday:
-                birthday='❗️ [Дни рождения] Добавьте кого-нибудь /add_users\n' 
-            else:
-                birthday='🔕 [Дни рождения] - Уведомления выключены\n'
-            # 
+            birthday = c.fetchone()            
+            birthday = f"🔕 {text[1]} {text[4]}" if not user[7] else f"🔔 {text[1]} {text[3]}" if birthday else f"❗️ {text[1]} Добавьте кого-нибудь /add_users"
             c.execute("select * from check_list_notifications where tu_id=%s;", (tu_id,))
             notification = c.fetchone()
-            if user[7] and notification:
-                notification='🔔 [Напоминалка] - Уведомления включены\n'
-            elif user[7] and not notification:
-                notification='❗️ [Напоминалка] Добавьте что-нибудь /add_notifications\n' 
-            else:
-                notification='🔕 [Напоминалка] - Уведомления выключены\n'
-            message = holidays + birthday + notification
-        reply = message
-        return reply
-
-        # message = "Подписка неактивна, уведомления не приходят!"
-        # if user[6]:
-        #     message = (
-        #         f"{'🔔' if user[7] else '🔕'} Уведомления о днях рождения\n"
-        #         f"{'🔔' if user[8] else '🔕'} Уведомления о праздников\n"
-        #         f"{'🔔' if user[9] else '🔕'} Уведомления о Ваших напоминаний\n"
-        #     )
-
+            notification = f"🔕 {text[2]} {text[4]}" if not user[8] else f"🔔 {text[2]} {text[3]}" if notification else f"❗️ {text[2]} Добавьте что-нибудь /add_notifications"
+            message = holiday + '\n' + birthday + '\n' + notification
+        return message
 
 @bot.message_handler(commands=['start'])
 def start_message(message):
@@ -91,63 +70,17 @@ def start_message(message):
     user_name = message.from_user.username
     with get_connect() as conn:
         user = check_telegram_id(conn, telegram_id)
-        if not user:  # Пользователь не зарегестрирован в бд
-            new_user = add_new_telegram_user(conn, telegram_id, user_first_name, user_last_name, user_name)  # Добавляем пользователя в бд
+        if not user:
+            new_user = add_new_telegram_user(conn, telegram_id, user_first_name, user_last_name, user_name)
             bot.send_message(message.from_user.id, f"{new_user}")
-        else:  # Пользователь есть в бд
+        else:
             check_status = check_status_telegram_user(conn, user[0])
             bot.send_message(message.from_user.id, f"Давно не виделись, {user[2]}!\nВаш персональный id: {user[0]}\n{check_status}")
         
 
-if __name__ == '__main__':
-    bot.polling(none_stop=True)
-
-# @bot.message_handler(commands=['start'])
-# def start_message(message):
-#     user_id = message.from_user.id
-#     user_first_name = message.from_user.first_name
-#     user_last_name = message.from_user.last_name
-#     user_name = message.from_user.username
-#     error_uuid = uuid.uuid1()
-#     cursor.execute(f"select * from telegram_users where telegram_id={user_id};")
-#     telegram_user = cursor.fetchone()
-#     print(f"{datetime.now()} | [INFO] | {user_first_name} {user_last_name} id:{user_id} - Воспользовался командой /start")
-#     if  not telegram_user:
-#         bot.send_message(message.from_user.id, f"Добро пожаловать, {user_first_name}!\nВы тут первый раз!?\nДавайте занесу Вас в систему, нужно написать? (Да/Нет)")
-#         @bot.message_handler(content_types=['text'])
-#         def start(message): 
-#             if  message.text.lower() == 'да':
-#                 cursor.execute(f"INSERT INTO telegram_users (telegram_id, first_name, last_name, username) VALUES({user_id}, '{user_first_name}', '{user_last_name}', '{user_name}') RETURNING id;")
-#                 conn.commit()
-#                 telegram_user_id = cursor.fetchone()
-#                 cursor.execute(f"select * from telegram_users where telegram_id={user_id};")
-#                 check_telegram_user_id = cursor.fetchone()
-#                 if not check_telegram_user_id:
-#                     bot.send_message(message.from_user.id, f"Уважаемый(ая), {user_first_name}!\nК сожалению возникла ошибка!\n"
-#                                                             f"Просьба связаться с @DeLipFin и передать\n{error_uuid}")
-#                     print(f"{datetime.now()} | [INFO] | {user_first_name} {user_last_name} id:{user_id} - [ERROR {error_uuid}] Не удалось добавить пользователя, что-то пошло не по плану")          
-#                 else:  
-#                     bot.send_message(message.from_user.id, f"Добавил Вас в систему {user_first_name}!\nВаш персональный id: {telegram_user_id[0]}\nВсе уведомления включены по умолчанию!\nЕсли хотите исправить, используйте /notification")
-#                     print(f"{datetime.now()} | [INFO] | {user_first_name} {user_last_name} id:{user_id} - [INSERT] Пользователь успешно зарегистрировался в системе, запись в telegram_users под id:{telegram_user_id[0]} добавлена")
-#                     bot.send_message(message.from_user.id, f"Сейчас Вы можете добавлять в список своих ")
-#             elif message.text.lower() == 'нет':
-#                 bot.send_message(message.from_user.id, f"Больше не буду Вас беспокоить, {user_first_name}!\nНо Вы всегда можете написать \"да\" для завершении регистрации!")
-#                 print(f"{datetime.now()} | [INFO] | {user_first_name} {user_last_name} id:{user_id} - Пользователь отказался от регистрации")
-#             else:
-#                 bot.send_message(message.from_user.id, f"Напишите пожалуйста Да/Нет для завершении регистрации!\nЛибо воспользуйтесь командой /help")
-#                 print(f"{datetime.now()} | [INFO] | {user_first_name} {user_last_name} id:{user_id} - Пользователь написал \"{message.text}\"")
-#     else:
-#         if  telegram_user[4] == True:
-#             bot.send_message(message.from_user.id, f"Давно не виделись, {telegram_user[2]}!\nВаш персональный id: {telegram_user[0]}\n"
-#                                                     f"Подписка включена!\nЕсли хотите выключить, используйте команду /notification")
-#         else:
-#             bot.send_message(message.from_user.id, f"Давно не виделись, {telegram_user[2]}!\nВаш персональный id: {telegram_user[0]}\n"
-#                                                     f"Подписка отключена у Вас!\nЕсли хотите включить, используйте команду /notification")
-
-
-# # @bot.message_handler(func=lambda _: True)
-# # def message_handler(message):
-# #     print(message) 
+# @bot.message_handler(func=lambda _: True)
+# def message_handler(message):
+#     print(message) 
 
 # def main():
 #     # schedule.every().day.at('00:35').do(holidays)
@@ -156,11 +89,10 @@ if __name__ == '__main__':
 #     while True:
 #         schedule.run_pending()
 
-# if __name__ == '__main__':
-#     # main()
-#     th1 = threading.Thread(target=main, daemon=True)
-#     th1.start()
-#     # th2 = threading.Thread(target=birthday_add, daemon=True)
-#     # th2.start()
-#     bot.polling(none_stop=True)
-
+if __name__ == '__main__':
+    # main()
+    # th1 = threading.Thread(target=main, daemon=True)
+    # th1.start()
+    # th2 = threading.Thread(target=birthday_add, daemon=True)
+    # th2.start()
+    bot.polling(none_stop=True)
